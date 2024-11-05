@@ -6,26 +6,27 @@ def focal_loss(alpha=1.0, gamma=2.0, class_weights=None):
     import torch.nn.functional as F
     
     class FocalLoss(nn.Module):
-        def __init__(self):
+        def __init__(self, alpha=1.0, gamma=2.0, class_weights=None):
             super(FocalLoss, self).__init__()
             self.alpha = alpha
             self.gamma = gamma
-            self.class_weights = None
             if class_weights is not None:
                 self.class_weights = torch.tensor(class_weights, dtype=torch.float32)
+            else:
+                self.class_weights = None
 
         def forward(self, inputs, targets):
             # Move class_weights to the same device as inputs
             if self.class_weights is not None:
                 self.class_weights = self.class_weights.to(inputs.device)
 
-            # Compute log probabilities with softmax
+            # Compute log probabilities
             log_probs = F.log_softmax(inputs, dim=1)
 
-            # One-hot encode targets and move to the same device
+            # Convert targets to one-hot encoding and move to the same device
             targets_one_hot = F.one_hot(targets, num_classes=inputs.size(1)).permute(0, 3, 1, 2).float().to(inputs.device)
 
-            # Calculate focal loss
+            # Compute focal loss components
             probs = torch.exp(log_probs)  # Convert log probabilities to probabilities
             focal_weight = self.alpha * (1 - probs) ** self.gamma
             focal_loss = -focal_weight * log_probs * targets_one_hot
@@ -37,8 +38,4 @@ def focal_loss(alpha=1.0, gamma=2.0, class_weights=None):
             # Average over batch, channels, and spatial dimensions
             return focal_loss.mean()
 
-    return FocalLoss()
-
-# In your external GitHub module (e.g., external_loss.py)
-def get_focal_loss(alpha=1.0, gamma=2.0, class_weights=None):
-    return focal_loss(alpha=alpha, gamma=gamma, class_weights=class_weights)
+    return FocalLoss(alpha=alpha, gamma=gamma, class_weights=class_weights)
