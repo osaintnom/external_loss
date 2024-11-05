@@ -1,49 +1,40 @@
 dependencies = ['torch']
 
-def combined_loss(ce_weight=1.0, dice_weight=1.0, class_weights=None):
+def focal_loss(alpha=1.0, gamma=2.0, class_weights=None):
     import torch
     import torch.nn as nn
     import torch.nn.functional as F
     
-    class CombinedLoss(nn.Module):
+    class FocalLoss(nn.Module):
         def __init__(self):
-            super(CombinedLoss, self).__init__()
-            self.ce_weight = 1.0
-            self.dice_weight = 1.0
-            self.class_weights = torch.tensor([1.0, 6.0], dtype=torch.float32)
+            super(FocalLoss, self).__init__()
+            self.alpha = alpha
+            self.gamma = gamma
+            self.class_weights = None
+            if class_weights is not None:
+                self.class_weights = torch.tensor(class_weights, dtype=torch.float32)
 
-            self.ce = nn.CrossEntropyLoss(weight=self.class_weights)
-            
         def forward(self, inputs, targets):
             # Move class_weights to the same device as inputs
             if self.class_weights is not None:
-                self.ce.weight = self.class_weights.to(inputs.device)
-            
-            # Compute Cross-Entropy Loss
-            loss_ce = self.ce(inputs, targets)
-            
-            # Compute Dice Loss
-            loss_dice = self.dice_loss(inputs, targets)
-            
-            # Combine losses
-            return self.ce_weight * loss_ce + self.dice_weight * loss_dice
-    
-        def dice_loss(self, inputs, targets, smooth=1.):
-            # Apply softmax to get probabilities
-            inputs_softmax = torch.softmax(inputs, dim=1)
-            
-            # Convert targets to one-hot encoding and move to the same device
-            targets_one_hot = F.one_hot(targets, num_classes=inputs.shape[1]).permute(0, 3, 1, 2).float().to(inputs.device)
-            
-            # Compute intersection and union
-            intersection = (inputs_softmax * targets_one_hot).sum(dim=(2, 3))
-            union = inputs_softmax.sum(dim=(2, 3)) + targets_one_hot.sum(dim=(2, 3))
-            
-            # Compute Dice coefficient
-            dice_coeff = (2. * intersection + smooth) / (union + smooth)
-            
-            # Compute Dice loss
-            loss = 1 - dice_coeff.mean()
-            return loss
+                self.class_weights = self.class_weights.to(inputs.device)
 
-    return CombinedLoss()
+            # Compute log probabilities with softmax
+            log_probs = F.log_softmax(inputs, dim=1)
+
+            # One-hot encode targets and move to the same device
+            targets_one_hot = F.one_hot(targets, num_classes=inputs.size(1)).permute(0, 3, 1, 2).float().to(inputs.device)
+
+            # Calculate focal loss
+            probs = torch.exp(log_probs)  # Convert log probabilities to probabilities
+            focal_weight = self.alpha * (1 - probs) ** self.gamma
+            focal_loss = -focal_weight * log_probs * targets_one_hot
+
+            # Apply class weights if provided
+            if self.class_weights is not None:
+                focal_loss *= self.class_weights.view(1, -1, 1, 1)
+
+            # Average over batch, channels, and spatial dimensions
+            return focal_loss.mean()
+
+    return FocalLoss()
