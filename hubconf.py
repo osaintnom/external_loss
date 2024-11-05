@@ -38,3 +38,7 @@ def focal_loss(alpha=1.0, gamma=2.0, class_weights=None):
             return focal_loss.mean()
 
     return FocalLoss()
+
+# In your external GitHub module (e.g., external_loss.py)
+def get_focal_loss(alpha=1.0, gamma=2.0, class_weights=None):
+    return focal_loss(alpha=alpha, gamma=gamma, class_weights=class_weights)
